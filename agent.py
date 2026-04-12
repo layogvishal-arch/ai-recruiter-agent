@@ -4,7 +4,7 @@ AI Recruiter Agent v2 — Agentic Candidate Qualification
 Key difference from v1: Claude decides WHICH tools to call and WHEN.
 - Resume is always fetched (baseline data)
 - Company intel is fetched per company, only for relevant ones
-- LinkedIn recommendations are fetched only when borderline or need validation
+- Recommendations are fetched only when borderline or need validation
 - Social proof is fetched only when assessing culture fit or founder access
 - Outreach is drafted only if candidate qualifies
 
@@ -32,8 +32,8 @@ RESUME_DATA = {
     "education": [
         {"institution": "Presidency College", "degree": "BCA", "period": "Jun 2016 – May 2019"},
         {"institution": "Upraised", "degree": "Product Management Fellowship", "period": "Jul 2023 – Nov 2023"},
-        {"institution": "LinkedIn Learning", "course": "Generative AI for Product Managers", "period": "Jan 2024"},
-        {"institution": "LinkedIn Learning", "course": "MongoDB Aggregation Pipeline", "period": "Jan 2025"},
+        {"institution": "LinkedIn Learning", "degree": "Generative AI for Product Managers", "period": "Jan 2024"},
+        {"institution": "LinkedIn Learning", "degree": "MongoDB Aggregation Pipeline", "period": "Jan 2025"},
     ],
     "experience": [
         {
@@ -62,7 +62,7 @@ RESUME_DATA = {
                 "Achieved 95% accuracy in production by refining OpenAI prompts",
                 "Drove $1.2M in ARR through LinkedIn outreach, talent intelligence, ATS integrations",
                 "Introduced Hiring Manager collaboration module adding $50K revenue",
-                "Reduced funnel drop-offs by by revamping outreach, thus improving outreach adoption rate by 70%",
+                "Reduced funnel drop-offs by 90%",
                 "Improved outreach accuracy from 20% to 77%",
                 "Cut data costs by 95% and boosted platform stability 10x",
                 "Designed GenAI-powered Copilot workflow",
@@ -108,7 +108,7 @@ RESUME_DATA = {
     "skills": {
         "product": ["PRD", "User Research", "Strategic Planning", "Competition Research",
                      "Cross-Functional Collaboration", "Product Roadmap", "Wireframing",
-                     "User Stories", "Agile", "Scrum", "MVPs", "Release Plans", "Claude", "Prototyping"],
+                     "User Stories", "Agile", "Scrum", "MVPs", "Release Plans"],
         "data": ["MongoDB", "SQL", "Excel", "Hotjar", "Mixpanel"],
         "tools": ["Postman", "Whimsical", "Jira", "Intercom", "Figma", "Monday",
                   "Twilio", "MailChimp", "Confluence", "Slack", "ChatGPT", "Claude", "Claude Code"],
@@ -134,7 +134,7 @@ COMPANY_INTEL_DATA = {
         "candidate_context": "7 PMs from 2022-2026. All others left before 1 year. Head of Product joined after Vishal, left before Vishal. Vishal left as the last PM — longest PM tenure in company history. High PM turnover suggests challenging environment. Vishal's longest tenure indicates strong resilience and trust from leadership.",
     },
     "Labra.io": {
-        "type": "Cosell based Cloud GTM company",
+        "type": "AI-native engineering company",
         "glassdoor_rating": None,
         "employees": "10-50",
         "stage": "Early stage",
@@ -312,11 +312,11 @@ You think step-by-step and make deliberate decisions about what information to g
 Call get_resume to understand the candidate's background.
 
 ### Step 2: Identify relevant companies (your judgment)
-Based on the JD and vetting criteria, decide which of the candidate's companies are MOST relevant. 
-- If the JD asks for startup experience, the startup roles matter most.
-- If the JD asks for enterprise experience, the enterprise roles matter most.
+Based on the JD and vetting criteria, decide which of the candidate's companies are MOST relevant.
+- ALWAYS fetch company intel for the candidate's CURRENT/MOST RECENT role — it reflects their latest capabilities regardless of company type. A candidate at an enterprise company might still be doing startup-relevant IC work.
+- Then fetch intel for 1-3 additional companies most relevant to the JD requirements in the most recent order.
 - Engineering roles may be less relevant for a PM position unless the JD values technical depth.
-Call get_company_intel ONLY for the 2-3 most relevant companies. Explain why you chose them.
+Call get_company_intel for the current role + 1-2 most relevant companies. Explain why you chose them.
 
 ### Step 3: Form an initial assessment
 Before fetching more data, form a preliminary assessment:
@@ -326,12 +326,17 @@ Before fetching more data, form a preliminary assessment:
 
 ### Step 4: Deep dive only where needed (your judgment)
 - If an assessment is borderline, call get_recommendations for the relevant company to find supporting or contradicting evidence
-- If a vetting criterion mentions founder access or culture fit
+- If a vetting criterion mentions founder access or culture fit, call get_social_proof
 - If an assessment is clearly Met or clearly Not Met, do NOT fetch more data — you have enough
-- NEVER call get_recommendations or get_social_proof for more than 2 companies total. See if there are any leadership provided recommendations.
+- NEVER call get_recommendations or get_social_proof for more than 2 companies total
 
 ### Step 5: Make your decision
 Based on all gathered evidence, provide your final assessment.
+
+CRITICAL — Must-have vs Nice-to-have vetting criteria:
+- Vetting criteria marked as [MUST HAVE] are hard disqualifiers. If the candidate does not meet a must-have, the recommendation is "Not a Fit" regardless of other strengths.
+- Vetting criteria marked as [NICE TO HAVE] should inform the assessment but should NOT disqualify the candidate on their own. A candidate who misses a nice-to-have but excels everywhere else can still be a Strong Fit.
+- When a candidate is borderline on a must-have (within 10-15% of the threshold), flag it as a risk but do not auto-disqualify — let the hiring team decide. For example, 1.75 years vs 2 years required is borderline, not a hard fail.
 
 ### Step 6: Conditional outreach
 - If Strong Fit: draft a personalized cold email (under 150 words) referencing specific achievements
@@ -353,7 +358,7 @@ For each requirement:
 **Vetting Criteria Assessment:**
 For each criterion with evidence.
 
-**Key Strengths (top 3):** backed by specific data points
+**Key Strengths (top 3-5):** backed by specific data points
 
 **Gaps / Risks:** be direct about weaknesses
 
@@ -381,7 +386,8 @@ def run_agent(jd: str, vetting_criteria: list) -> str:
     if vetting_criteria:
         criteria_text = "\n\nADDITIONAL VETTING CRITERIA:\n"
         for i, vc in enumerate(vetting_criteria):
-            criteria_text += f"{i+1}. [{vc['type']}] {vc['criteria']}\n"
+            priority = vc.get('priority', 'must have').upper()
+            criteria_text += f"{i+1}. [{vc['type']}] [{priority}] {vc['criteria']}\n"
     
     user_message = f"""Qualify the candidate for the following position. Follow your reasoning process step by step. Be deliberate about which tools you call and explain your reasoning.
 
@@ -539,8 +545,10 @@ def main():
         criteria_text = input(f"  Enter {criteria_type} criteria: ").strip()
         
         if criteria_text:
-            vetting_criteria.append({"type": criteria_type, "criteria": criteria_text})
-            print(f"  ✓ Added: [{criteria_type}] {criteria_text}")
+            priority_input = input(f"  Priority — 1. Must have  2. Nice to have: ").strip()
+            priority = "nice to have" if priority_input == "2" else "must have"
+            vetting_criteria.append({"type": criteria_type, "criteria": criteria_text, "priority": priority})
+            print(f"  ✓ Added: [{criteria_type}] [{priority.upper()}] {criteria_text}")
     
     print(f"\n{'=' * 60}")
     print(f"  Running agent with {len(vetting_criteria)} vetting criteria...")
