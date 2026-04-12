@@ -1,5 +1,12 @@
 """
-AI Recruiter Agent — Candidate Qualification Engine
+AI Recruiter Agent v2 — Agentic Candidate Qualification
+
+Key difference from v1: Claude decides WHICH tools to call and WHEN.
+- Resume is always fetched (baseline data)
+- Company intel is fetched per company, only for relevant ones
+- LinkedIn recommendations are fetched only when borderline or need validation
+- Social proof is fetched only when assessing culture fit or founder access
+- Outreach is drafted only if candidate qualifies
 
 Run: python agent.py
 """
@@ -14,7 +21,7 @@ MODEL = "claude-haiku-4-5-20251001"
 
 
 # ══════════════════════════════════════════════
-# CANDIDATE DATA (pre-parsed from resume)
+# DATA STORES (separated by tool)
 # ══════════════════════════════════════════════
 
 RESUME_DATA = {
@@ -25,8 +32,8 @@ RESUME_DATA = {
     "education": [
         {"institution": "Presidency College", "degree": "BCA", "period": "Jun 2016 – May 2019"},
         {"institution": "Upraised", "degree": "Product Management Fellowship", "period": "Jul 2023 – Nov 2023"},
-        {"institution": "LinkedIn Learning", "degree": "Generative AI for Product Managers", "period": "Jan 2024"},
-        {"institution": "LinkedIn Learning", "degree": "MongoDB Aggregation Pipeline", "period": "Jan 2025"},
+        {"institution": "LinkedIn Learning", "course": "Generative AI for Product Managers", "period": "Jan 2024"},
+        {"institution": "LinkedIn Learning", "course": "MongoDB Aggregation Pipeline", "period": "Jan 2025"},
     ],
     "experience": [
         {
@@ -55,7 +62,7 @@ RESUME_DATA = {
                 "Achieved 95% accuracy in production by refining OpenAI prompts",
                 "Drove $1.2M in ARR through LinkedIn outreach, talent intelligence, ATS integrations",
                 "Introduced Hiring Manager collaboration module adding $50K revenue",
-                "Reduced funnel drop-offs by 90%",
+                "Reduced funnel drop-offs by by revamping outreach, thus improving outreach adoption rate by 70%",
                 "Improved outreach accuracy from 20% to 77%",
                 "Cut data costs by 95% and boosted platform stability 10x",
                 "Designed GenAI-powered Copilot workflow",
@@ -101,7 +108,7 @@ RESUME_DATA = {
     "skills": {
         "product": ["PRD", "User Research", "Strategic Planning", "Competition Research",
                      "Cross-Functional Collaboration", "Product Roadmap", "Wireframing",
-                     "User Stories", "Agile", "Scrum", "MVPs", "Release Plans"],
+                     "User Stories", "Agile", "Scrum", "MVPs", "Release Plans", "Claude", "Prototyping"],
         "data": ["MongoDB", "SQL", "Excel", "Hotjar", "Mixpanel"],
         "tools": ["Postman", "Whimsical", "Jira", "Intercom", "Figma", "Monday",
                   "Twilio", "MailChimp", "Confluence", "Slack", "ChatGPT", "Claude", "Claude Code"],
@@ -109,18 +116,13 @@ RESUME_DATA = {
     },
 }
 
-
-# ══════════════════════════════════════════════
-# MOCK TOOLS (swappable with real APIs later)
-# ══════════════════════════════════════════════
-
-COMPANY_INTELLIGENCE = {
+COMPANY_INTEL_DATA = {
     "Tech Mahindra": {
         "type": "Service-based IT company",
         "glassdoor_rating": 3.8,
         "employees": "10,000+",
         "stage": "Public / Enterprise",
-        "notes": "Candidate worked for ServiceNow as client, as Senior Inbound PM. ServiceNow requires minimum 5 years experience for direct hire at this level.",
+        "candidate_context": "Candidate worked for ServiceNow as client. The Senior Inbound PM role was an IC position directly with ServiceNow's Product Director. He was interviewed and selected by ServiceNow's product team. ServiceNow requires minimum 5 years experience for direct hire at this level.",
     },
     "HireQuotient": {
         "type": "HRtech AI startup",
@@ -129,72 +131,122 @@ COMPANY_INTELLIGENCE = {
         "stage": "Pre-seed",
         "funding": "$1.8M USD (2022)",
         "founder_background": "IIT Delhi",
-        "pm_history": "7 PMs from 2022-2026. All others left before 1 year. Head of Product joined after Vishal, left before Vishal. Vishal left as the last PM — longest PM tenure in company history.",
-        "notes": "High PM turnover indicates either challenging environment or rapid pivoting. Vishal's longest tenure suggests strong resilience, ownership, and trust from leadership.",
+        "candidate_context": "7 PMs from 2022-2026. All others left before 1 year. Head of Product joined after Vishal, left before Vishal. Vishal left as the last PM — longest PM tenure in company history. High PM turnover suggests challenging environment. Vishal's longest tenure indicates strong resilience and trust from leadership.",
     },
     "Labra.io": {
-        "type": "AI-native engineering company",
+        "type": "Cosell based Cloud GTM company",
         "glassdoor_rating": None,
         "employees": "10-50",
         "stage": "Early stage",
         "focus": "Cloud GTM, CRMs",
+        "candidate_context": "Candidate was a software engineer here, not a PM role.",
     },
     "Inviz AI Solutions": {
         "type": "Search-based solutions",
         "glassdoor_rating": 2.7,
         "employees": "10-50",
         "stage": "Early stage",
+        "candidate_context": "Candidate was a software engineer here, not a PM role.",
     },
     "Deloitte Consulting USI": {
         "type": "Service-based consulting",
         "glassdoor_rating": 4.0,
         "employees": "10,000+",
         "stage": "Public / Enterprise",
-        "notes": "Candidate worked at HP as client, in support and engineering team.",
+        "candidate_context": "Candidate worked at HP as client, in support and engineering team. This was an analyst role, pre-PM career.",
     },
 }
 
+RECOMMENDATIONS_DATA = {
+    "Tech Mahindra": [
+        {
+            "from": "VP of Product, ServiceNow",
+            "relationship": "Direct manager / stakeholder",
+            "text": "Few people ramp up as quickly and effectively as Vishal. From day one, he brought a level of diligence and intellectual curiosity that set him apart. Rather than waiting for context, he proactively sought out the right people, asked sharp questions, and invested effort to deeply understand unfamiliar processes. He drove outcomes that moved the needle on product goals well before anyone would have expected. His ability to connect dots across teams and translate complexity into clear direction made him a force multiplier. Where ambiguity and shifting priorities can stall even experienced PMs, Vishal leaned in with resilience and professionalism. I'd welcome the chance to work with him again in a heartbeat.",
+        },
+        {
+            "from": "Director of Product, ServiceNow",
+            "relationship": "Direct counterpart",
+            "text": "Vishal stands out for his sharp analytical thinking and ability to quickly grasp even highly complex products. He brings a rare combination of engineering depth and product expertise. His technical understanding allows him to navigate constraints with confidence, while his product mindset ensures decisions remain aligned with long-term goals. He carefully balances user experience with strategic objectives. Working with him is both productive and genuinely enjoyable.",
+        },
+        {
+            "from": "Staff Engineer, ServiceNow",
+            "relationship": "Engineering partner",
+            "text": "Vishal has a sharp eye for product detail and a strong sense of priorities, which made it easy for the development team to stay aligned and focused. He communicated requirements with clarity, coordinated across functions seamlessly, and drove execution with precision. I would highly recommend Vishal to any team looking for a PM who combines strategic thinking with strong delivery.",
+        },
+    ],
+    "HireQuotient": [
+        {
+            "from": "Full Stack Engineer, HireQuotient",
+            "relationship": "Engineering partner",
+            "text": "Vishal is one of the most meticulous and detail oriented person I have worked with. His research oriented mindset and way of working is second to none. I remember working with him on several important impactful customer facing solutions and the way he researched and found the most optimal solutions to solving product and feature problems is absolutely incredible. His approach to customer oriented solutions has enabled teams to deliver impactful products at HireQuotient.",
+        },
+    ],
+    "Labra.io": [],
+    "Inviz AI Solutions": [],
+    "Deloitte Consulting USI": [],
+}
 
-# ── Tool functions (the agent calls these) ──
+SOCIAL_PROOF_DATA = {
+    "Tech Mahindra": {
+        "public_mentions": None,
+        "notable": "Interviewed and selected by ServiceNow's product leadership for a role that typically requires 5+ years. Candidate had ~2 years PM experience at the time.",
+    },
+    "HireQuotient": {
+        "public_mentions": "Founder has publicly spoken about and tagged Vishal on LinkedIn during partnership announcements. This indicates strong founder-PM relationship and public recognition of contributions.",
+        "notable": "Longest PM tenure in company history (1.75 years). 6 other PMs left before completing 1 year. Head of Product joined after Vishal and left before him.",
+    },
+    "Labra.io": {"public_mentions": None, "notable": None},
+    "Inviz AI Solutions": {"public_mentions": None, "notable": None},
+    "Deloitte Consulting USI": {"public_mentions": None, "notable": None},
+}
+
+
+# ══════════════════════════════════════════════
+# TOOL FUNCTIONS
+# ══════════════════════════════════════════════
 
 def tool_get_resume() -> dict:
-    """Returns the full parsed resume data."""
     return RESUME_DATA
 
-
 def tool_get_company_intel(company_name: str) -> dict:
-    """Returns company intelligence for a given company."""
-    for key in COMPANY_INTELLIGENCE:
+    for key in COMPANY_INTEL_DATA:
         if key.lower() in company_name.lower() or company_name.lower() in key.lower():
-            return {"company": key, **COMPANY_INTELLIGENCE[key]}
-    return {"company": company_name, "error": "No intelligence data available for this company"}
+            return {"company": key, **COMPANY_INTEL_DATA[key]}
+    return {"company": company_name, "error": "No intelligence data available"}
 
+def tool_get_recommendations(company_name: str) -> dict:
+    for key in RECOMMENDATIONS_DATA:
+        if key.lower() in company_name.lower() or company_name.lower() in key.lower():
+            recs = RECOMMENDATIONS_DATA[key]
+            if recs:
+                return {"company": key, "recommendations": recs, "count": len(recs)}
+            else:
+                return {"company": key, "recommendations": [], "count": 0, "note": "No LinkedIn recommendations available for this company"}
+    return {"company": company_name, "error": "Company not found"}
 
-def tool_get_all_companies_intel() -> list:
-    """Returns intelligence for all companies in the candidate's history."""
-    results = []
-    for exp in RESUME_DATA["experience"]:
-        intel = tool_get_company_intel(exp["company"])
-        intel["candidate_role"] = exp["role"]
-        intel["candidate_period"] = exp["period"]
-        results.append(intel)
-    return results
-
-
-# ── Tool registry (maps tool names to functions) ──
+def tool_get_social_proof(company_name: str) -> dict:
+    for key in SOCIAL_PROOF_DATA:
+        if key.lower() in company_name.lower() or company_name.lower() in key.lower():
+            return {"company": key, **SOCIAL_PROOF_DATA[key]}
+    return {"company": company_name, "error": "No social proof data available"}
 
 TOOL_FUNCTIONS = {
     "get_resume": tool_get_resume,
     "get_company_intel": tool_get_company_intel,
-    "get_all_companies_intel": tool_get_all_companies_intel,
+    "get_recommendations": tool_get_recommendations,
+    "get_social_proof": tool_get_social_proof,
 }
 
-# ── Tool definitions for Claude API ──
+
+# ══════════════════════════════════════════════
+# TOOL DEFINITIONS FOR CLAUDE API
+# ══════════════════════════════════════════════
 
 TOOLS = [
     {
         "name": "get_resume",
-        "description": "Get the full parsed resume data for the candidate including education, experience, skills, and achievements.",
+        "description": "Get the candidate's full parsed resume including education, work experience, skills, and achievements. Always call this first.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -203,127 +255,148 @@ TOOLS = [
     },
     {
         "name": "get_company_intel",
-        "description": "Get company intelligence data including glassdoor rating, company stage, funding, employee count, and special notes. Use this to assess the quality and context of a candidate's work experience at a specific company.",
+        "description": "Get intelligence data for a SPECIFIC company — glassdoor rating, stage, funding, employee count, and contextual notes about the candidate's role there. Call this only for companies that are RELEVANT to the JD requirements. For example, if the JD requires startup experience, fetch intel for the candidate's startup roles, not for large enterprise employers unless their experience there is relevant to a specific vetting criterion.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "company_name": {
                     "type": "string",
-                    "description": "Name of the company to look up",
+                    "description": "Exact company name from the candidate's resume",
                 },
             },
             "required": ["company_name"],
         },
     },
     {
-        "name": "get_all_companies_intel",
-        "description": "Get intelligence data for ALL companies in the candidate's work history at once. Returns company stage, ratings, funding, and contextual notes for each employer.",
+        "name": "get_recommendations",
+        "description": "Get LinkedIn recommendations from colleagues at a SPECIFIC company. These are direct quotes from people who worked with the candidate. Use this tool ONLY when: (1) your initial assessment on a JD requirement or vetting criterion is borderline and you need peer validation, (2) you need to verify a specific claim about the candidate's working style or impact, or (3) the JD emphasizes soft skills like communication or leadership that are hard to assess from resume bullets alone. Do NOT call this for every company — it's expensive. Call it for at most 2 companies where the recommendations would most influence your decision.",
         "input_schema": {
             "type": "object",
-            "properties": {},
-            "required": [],
+            "properties": {
+                "company_name": {
+                    "type": "string",
+                    "description": "Exact company name to fetch recommendations for",
+                },
+            },
+            "required": ["company_name"],
+        },
+    },
+    {
+        "name": "get_social_proof",
+        "description": "Get social proof data for a SPECIFIC company — public LinkedIn mentions by founders, notable context about the candidate's tenure relative to peers, and other signals that indicate the candidate's standing beyond resume bullets. Use this ONLY when: (1) a vetting criterion asks about founder access or culture fit, (2) you need to assess the candidate's reputation or standing at a company, or (3) you see unusual patterns in tenure that need context (e.g., very short or very long stay). Do NOT call this routinely.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "company_name": {
+                    "type": "string",
+                    "description": "Exact company name to fetch social proof for",
+                },
+            },
+            "required": ["company_name"],
         },
     },
 ]
 
 
 # ══════════════════════════════════════════════
-# AGENT CORE
+# SYSTEM PROMPT — THE AGENT'S BRAIN
 # ══════════════════════════════════════════════
 
-SYSTEM_PROMPT = """You are an expert AI recruiter agent that qualifies candidates for job positions.
+SYSTEM_PROMPT = """You are an expert AI recruiter agent that qualifies candidates for job positions using available tools.
 
-You have access to tools to retrieve candidate data and company intelligence. USE THE TOOLS — do not make assumptions about the candidate without first fetching their data.
+## YOUR REASONING PROCESS
 
-YOUR PROCESS:
-1. First, call get_resume to get the candidate's full profile
-2. Then, call get_all_companies_intel to understand the context of each role
-3. Analyze the candidate against the job description and vetting criteria
-4. Provide a structured qualification assessment
+You think step-by-step and make deliberate decisions about what information to gather.
 
-YOUR OUTPUT FORMAT (after gathering all data):
+### Step 1: Get the resume (always)
+Call get_resume to understand the candidate's background.
 
-## Candidate Qualification Report
+### Step 2: Identify relevant companies (your judgment)
+Based on the JD and vetting criteria, decide which of the candidate's companies are MOST relevant. 
+- If the JD asks for startup experience, the startup roles matter most.
+- If the JD asks for enterprise experience, the enterprise roles matter most.
+- Engineering roles may be less relevant for a PM position unless the JD values technical depth.
+Call get_company_intel ONLY for the 2-3 most relevant companies. Explain why you chose them.
 
-### Match Score: [Strong Fit / Potential Fit / Not a Fit]
+### Step 3: Form an initial assessment
+Before fetching more data, form a preliminary assessment:
+- For each JD requirement: Met / Partially Met / Not Met / Cannot Assess
+- For each vetting criterion: same assessment
+- Identify which assessments are BORDERLINE (could go either way)
 
-### JD Requirements Analysis
-For each requirement from the JD, assess:
-- Requirement: [what the JD asks for]
-- Evidence: [specific proof from resume]
-- Match: [Met / Partially Met / Not Met]
-- Notes: [context from company intelligence that strengthens or weakens the match]
+### Step 4: Deep dive only where needed (your judgment)
+- If an assessment is borderline, call get_recommendations for the relevant company to find supporting or contradicting evidence
+- If a vetting criterion mentions founder access or culture fit
+- If an assessment is clearly Met or clearly Not Met, do NOT fetch more data — you have enough
+- NEVER call get_recommendations or get_social_proof for more than 2 companies total. See if there are any leadership provided recommendations.
 
-### Vetting Criteria Assessment
-For each vetting criterion provided, assess with evidence.
+### Step 5: Make your decision
+Based on all gathered evidence, provide your final assessment.
 
-### Company Intelligence Insights
-Highlight anything from the company data that adds important context — such as the candidate's tenure relative to peers, company stage relevance, or red flags.
+### Step 6: Conditional outreach
+- If Strong Fit: draft a personalized cold email (under 150 words) referencing specific achievements
+- If Potential Fit: draft a shorter, more cautious email
+- If Not a Fit: do NOT draft outreach. Instead explain why and suggest what type of role would be better suited
 
-### Strengths (top 3-5)
-Backed by specific data points.
+## OUTPUT FORMAT
 
-### Gaps / Risks (if any)
-Be honest about weaknesses.
+### Candidate Qualification Report
 
-### Recommendation
-Clear hire/no-hire recommendation with reasoning.
+**Tools used:** [list which tools you called and why]
 
-### Outreach Draft
-If the candidate is a Strong Fit or Potential Fit, draft a cold email that:
-- References specific achievements from their background
-- Connects their experience to the JD
-- Is personalized, not generic
-- Is concise (under 150 words)
+**Match Score:** [Strong Fit / Potential Fit / Not a Fit]
 
-If Not a Fit, explain why and skip the outreach.
+**JD Requirements Analysis:**
+For each requirement:
+- Requirement → Evidence → Match level → Notes
 
-IMPORTANT:
-- Always cite specific numbers, achievements, and data points from the resume
-- Use company intelligence to add depth (e.g., "lasted longest among 7 PMs" is more meaningful than "worked for 2 years")
-- Be direct and opinionated — recruiters want a clear recommendation, not hedging
-- If a vetting criterion cannot be assessed with available data, say so explicitly
+**Vetting Criteria Assessment:**
+For each criterion with evidence.
+
+**Key Strengths (top 3):** backed by specific data points
+
+**Gaps / Risks:** be direct about weaknesses
+
+**Recommendation:** clear hire/no-hire with reasoning
+
+**Outreach Draft:** (only if qualified)
+
+## RULES
+- Always cite specific numbers and achievements, never be vague
+- Use company intelligence to add depth beyond resume bullets
+- Be opinionated — recruiters want a clear recommendation, not hedging
+- If you cannot assess a criterion with available data, say so explicitly rather than guessing
+- Show your reasoning for each tool call decision
 """
 
 
+# ══════════════════════════════════════════════
+# AGENT LOOP
+# ══════════════════════════════════════════════
+
 def run_agent(jd: str, vetting_criteria: list) -> str:
-    """
-    Run the recruiter agent with tool-use loop.
-    
-    The agent:
-    1. Receives JD + vetting criteria
-    2. Decides which tools to call
-    3. Calls tools, receives results
-    4. Reasons about the data
-    5. Produces the qualification report
-    
-    This uses Claude's native tool_use — the model decides
-    which tools to call and when, not hardcoded logic.
-    """
     client = anthropic.Anthropic()
     
-    # Format vetting criteria
     criteria_text = ""
     if vetting_criteria:
         criteria_text = "\n\nADDITIONAL VETTING CRITERIA:\n"
         for i, vc in enumerate(vetting_criteria):
             criteria_text += f"{i+1}. [{vc['type']}] {vc['criteria']}\n"
     
-    user_message = f"""Qualify the candidate for the following position.
+    user_message = f"""Qualify the candidate for the following position. Follow your reasoning process step by step. Be deliberate about which tools you call and explain your reasoning.
 
 JOB DESCRIPTION:
 {jd}
 {criteria_text}
 
-Start by fetching the candidate's resume and company intelligence, then provide your full qualification assessment."""
+Begin by fetching the candidate's resume, then reason about which companies and data points are most relevant before fetching more."""
 
     messages = [{"role": "user", "content": user_message}]
     
     total_input_tokens = 0
     total_output_tokens = 0
-    tool_calls_made = 0
+    tool_calls_log = []
     
-    # Agent loop — keeps running until the model stops calling tools
     while True:
         response = client.messages.create(
             model=MODEL,
@@ -336,22 +409,25 @@ Start by fetching the candidate's resume and company intelligence, then provide 
         total_input_tokens += response.usage.input_tokens
         total_output_tokens += response.usage.output_tokens
         
-        # Check if the model wants to use tools
         if response.stop_reason == "tool_use":
-            # Process all tool calls in this response
             assistant_content = response.content
             tool_results = []
+            
+            # Print any reasoning text before tool calls
+            for block in assistant_content:
+                if hasattr(block, "text") and block.text.strip():
+                    print(f"\n  Agent thinking: {block.text[:200]}...")
             
             for block in assistant_content:
                 if block.type == "tool_use":
                     tool_name = block.name
                     tool_input = block.input
                     tool_id = block.id
-                    tool_calls_made += 1
                     
-                    print(f"  Agent calling tool: {tool_name}({json.dumps(tool_input) if tool_input else ''})")
+                    input_str = json.dumps(tool_input) if tool_input else ""
+                    print(f"  → Calling: {tool_name}({input_str})")
+                    tool_calls_log.append(f"{tool_name}({input_str})")
                     
-                    # Execute the tool
                     if tool_name in TOOL_FUNCTIONS:
                         if tool_input:
                             result = TOOL_FUNCTIONS[tool_name](**tool_input)
@@ -366,22 +442,21 @@ Start by fetching the candidate's resume and company intelligence, then provide 
                         "content": json.dumps(result, indent=2),
                     })
             
-            # Add assistant message and tool results to conversation
             messages.append({"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results})
             
         else:
-            # Model is done — extract final text
             final_text = ""
             for block in response.content:
                 if hasattr(block, "text"):
                     final_text += block.text
             
-            # Cost calculation (Haiku pricing)
             cost = (total_input_tokens * 0.25 / 1_000_000) + (total_output_tokens * 1.25 / 1_000_000)
             
             print(f"\n  --- Agent Stats ---")
-            print(f"  Tool calls: {tool_calls_made}")
+            print(f"  Tool calls made: {len(tool_calls_log)}")
+            for i, tc in enumerate(tool_calls_log):
+                print(f"    {i+1}. {tc}")
             print(f"  Input tokens: {total_input_tokens}")
             print(f"  Output tokens: {total_output_tokens}")
             print(f"  Estimated cost: ${cost:.4f}")
@@ -392,75 +467,6 @@ Start by fetching the candidate's resume and company intelligence, then provide 
 # ══════════════════════════════════════════════
 # INTERACTIVE RUNNER
 # ══════════════════════════════════════════════
-
-def main():
-    print("=" * 60)
-    print("  AI RECRUITER AGENT — Candidate Qualification")
-    print("=" * 60)
-    
-    # Get JD
-    print("\nPaste the Job Description (type END on a new line when done):")
-    jd_lines = []
-    while True:
-        line = input()
-        if line.strip().upper() == "END":
-            break
-        jd_lines.append(line)
-    jd = "\n".join(jd_lines)
-    
-    if not jd.strip():
-        print("No JD provided. Using default test JD...")
-        jd = DEFAULT_JD
-    
-    # Get vetting criteria
-    vetting_criteria = []
-    print("\nAdd vetting criteria (or type SKIP to proceed):")
-    
-    criteria_types = {
-        "1": "years of experience",
-        "2": "skills",
-        "3": "company intelligence",
-        "4": "work experience",
-    }
-    
-    while True:
-        print("\n  Select type:")
-        print("  1. Years of experience")
-        print("  2. Skills")
-        print("  3. Company intelligence")
-        print("  4. Work experience")
-        print("  Type SKIP to proceed with current criteria, DONE to finish adding")
-        
-        choice = input("  > ").strip()
-        
-        if choice.upper() in ("SKIP", "DONE"):
-            break
-        
-        if choice not in criteria_types:
-            print("  Invalid choice, try again")
-            continue
-        
-        criteria_type = criteria_types[choice]
-        criteria_text = input(f"  Enter {criteria_type} criteria: ").strip()
-        
-        if criteria_text:
-            vetting_criteria.append({"type": criteria_type, "criteria": criteria_text})
-            print(f"  Added: [{criteria_type}] {criteria_text}")
-    
-    # Run the agent
-    print(f"\n{'=' * 60}")
-    print(f"  Running agent with {len(vetting_criteria)} vetting criteria...")
-    print(f"{'=' * 60}\n")
-    
-    result = run_agent(jd, vetting_criteria)
-    
-    print(f"\n{'=' * 60}")
-    print(f"  QUALIFICATION REPORT")
-    print(f"{'=' * 60}")
-    print(result)
-
-
-# ── Default test JD ──
 
 DEFAULT_JD = """The Role
 We're looking for a Founding Product Manager to build and own the product function at Juicebox from the ground up.
@@ -482,6 +488,71 @@ You Have
 - Strong prioritization, judgment, and communication skills
 - Comfort operating in ambiguity and owning outcomes end-to-end
 - Proven ability to translate customer needs into clear product requirements"""
+
+
+def main():
+    print("=" * 60)
+    print("  AI RECRUITER AGENT v2 — Agentic Qualification")
+    print("=" * 60)
+    
+    print("\nPaste the Job Description (type END on a new line when done):")
+    jd_lines = []
+    while True:
+        line = input()
+        if line.strip().upper() == "END":
+            break
+        jd_lines.append(line)
+    jd = "\n".join(jd_lines)
+    
+    if not jd.strip():
+        print("No JD provided. Using default test JD...")
+        jd = DEFAULT_JD
+    
+    vetting_criteria = []
+    print("\nAdd vetting criteria (or type SKIP to proceed):")
+    
+    criteria_types = {
+        "1": "years of experience",
+        "2": "skills",
+        "3": "company intelligence",
+        "4": "work experience",
+    }
+    
+    while True:
+        print("\n  Select type:")
+        print("  1. Years of experience")
+        print("  2. Skills")
+        print("  3. Company intelligence")
+        print("  4. Work experience")
+        print("  Type DONE to finish adding criteria")
+        
+        choice = input("  > ").strip()
+        
+        if choice.upper() in ("SKIP", "DONE"):
+            break
+        
+        if choice not in criteria_types:
+            print("  Invalid choice, try again")
+            continue
+        
+        criteria_type = criteria_types[choice]
+        criteria_text = input(f"  Enter {criteria_type} criteria: ").strip()
+        
+        if criteria_text:
+            vetting_criteria.append({"type": criteria_type, "criteria": criteria_text})
+            print(f"  ✓ Added: [{criteria_type}] {criteria_text}")
+    
+    print(f"\n{'=' * 60}")
+    print(f"  Running agent with {len(vetting_criteria)} vetting criteria...")
+    print(f"  Watch the tool calls below — the agent decides what to fetch.")
+    print(f"{'=' * 60}\n")
+    
+    result = run_agent(jd, vetting_criteria)
+    
+    print(f"\n{'=' * 60}")
+    print(f"  QUALIFICATION REPORT")
+    print(f"{'=' * 60}")
+    print(result)
 
 
 if __name__ == "__main__":
