@@ -120,21 +120,7 @@ COMPANY_INTELLIGENCE = {
         "glassdoor_rating": 3.8,
         "employees": "10,000+",
         "stage": "Public / Enterprise",
-        "notes": "Candidate worked for ServiceNow as client. The Senior Inbound Product Manager was an IC role directly with ServiceNow's Product Director. He was interviewed and selected by ServiceNow's product team for this role. ServiceNow requires minimum 5 years experience for direct hire at this level.",
-        "linkedin_recommendations": [
-            {
-                "from": "VP of Product, ServiceNow",
-                "text": "Few people ramp up as quickly and effectively as Vishal. From day one, he brought a level of diligence and intellectual curiosity that set him apart. Rather than waiting for context, he proactively sought out the right people, asked sharp questions, and invested effort to deeply understand unfamiliar processes. He drove outcomes that moved the needle on product goals well before anyone would have expected. His ability to connect dots across teams and translate complexity into clear direction made him a force multiplier. Where ambiguity and shifting priorities can stall even experienced PMs, Vishal leaned in with resilience and professionalism. I'd welcome the chance to work with him again in a heartbeat.",
-            },
-            {
-                "from": "Director of Product, ServiceNow",
-                "text": "Vishal stands out for his sharp analytical thinking and ability to quickly grasp even highly complex products. He brings a rare combination of engineering depth and product expertise. His technical understanding allows him to navigate constraints with confidence, while his product mindset ensures decisions remain aligned with long-term goals. He carefully balances user experience with strategic objectives. Working with him is both productive and genuinely enjoyable.",
-            },
-            {
-                "from": "Staff Engineer, ServiceNow",
-                "text": "Vishal has a sharp eye for product detail and a strong sense of priorities, which made it easy for the development team to stay aligned and focused. He communicated requirements with clarity, coordinated across functions seamlessly, and drove execution with precision. I would highly recommend Vishal to any team looking for a PM who combines strategic thinking with strong delivery.",
-            },
-        ],
+        "notes": "Candidate worked for ServiceNow as client, as Senior Inbound PM. ServiceNow requires minimum 5 years experience for direct hire at this level.",
     },
     "HireQuotient": {
         "type": "HRtech AI startup",
@@ -145,13 +131,6 @@ COMPANY_INTELLIGENCE = {
         "founder_background": "IIT Delhi",
         "pm_history": "7 PMs from 2022-2026. All others left before 1 year. Head of Product joined after Vishal, left before Vishal. Vishal left as the last PM — longest PM tenure in company history.",
         "notes": "High PM turnover indicates either challenging environment or rapid pivoting. Vishal's longest tenure suggests strong resilience, ownership, and trust from leadership.",
-        "social_proof": "Founder has publicly spoken about and tagged Vishal on LinkedIn during partnership announcements, indicating strong founder-PM relationship and public recognition.",
-        "linkedin_recommendations": [
-            {
-                "from": "Full Stack Engineer, HireQuotient",
-                "text": "Vishal is one of the most meticulous and detail oriented person I have worked with. His research oriented mindset and way of working is second to none. I remember working with him on several important impactful customer facing solutions and the way he researched and found the most optimal solutions to solving product and feature problems is absolutely incredible. His approach to customer oriented solutions has enabled teams to deliver impactful products at HireQuotient.",
-            },
-        ],
     },
     "Labra.io": {
         "type": "AI-native engineering company",
